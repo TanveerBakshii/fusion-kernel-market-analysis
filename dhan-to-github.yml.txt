@@ -1,0 +1,46 @@
+name: Dhan → GitHub (poll & commit)
+
+# runs every 5 minutes (cron granularity)
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+    env:
+      DHAN_API_KEY: ${{ secrets.DHAN_API_KEY }}
+      DHAN_SYMBOLS: ${{ secrets.DHAN_SYMBOLS }} # optional, comma-separated e.g. "NSE:TCS,NSE:RELIANCE"
+      FILE_PATH: data/dhan-ticks.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+        working-directory: ./github-action-worker
+
+      - name: Fetch Dhan and store file
+        run: node fetch_and_write.js
+        working-directory: ./github-action-worker
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $FILE_PATH || true
+          # if no changes, exit 0
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore: update dhanticks $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git push
